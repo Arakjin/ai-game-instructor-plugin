@@ -16,6 +16,38 @@ document.addEventListener('DOMContentLoaded', function () {
             container._state = { games: [], playthroughs: [] };
         }
 
+        const buildGameOptions = function () {
+            if (!gameSelect) {
+                return;
+            }
+
+            const games = container._state.games || [];
+            gameSelect.innerHTML = '';
+
+            if (!games.length) {
+                const option = document.createElement('option');
+                option.value = '0';
+                option.textContent = 'No games yet';
+                gameSelect.appendChild(option);
+                container.dataset.gameId = '0';
+                return;
+            }
+
+            games.forEach(function (game) {
+                const option = document.createElement('option');
+                option.value = String(game.id);
+                option.textContent = game.title || 'Game';
+                gameSelect.appendChild(option);
+            });
+
+            const selectedGame = games.some(function (game) {
+                return Number(game.id) === Number(container.dataset.gameId);
+            }) ? String(container.dataset.gameId) : String(games[0].id);
+
+            gameSelect.value = selectedGame;
+            container.dataset.gameId = selectedGame;
+        };
+
         const updatePlaythroughOptions = function (gameId) {
             if (!playthroughSelect) {
                 return;
@@ -51,6 +83,46 @@ document.addEventListener('DOMContentLoaded', function () {
             container.dataset.playthroughId = selectedPlaythrough;
         };
 
+        const refreshWidgetState = function (selectedGameId) {
+            const formData = new FormData();
+            formData.append('action', 'ai_game_instructor_get_state');
+            formData.append('nonce', aiGameInstructorData.nonce);
+            formData.append('game_id', selectedGameId || container.dataset.gameId || '0');
+
+            fetch(aiGameInstructorData.ajaxUrl, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            })
+                .then(function (response) {
+                    return response.json();
+                })
+                .then(function (payload) {
+                    if (!payload.success) {
+                        return;
+                    }
+
+                    container._state = {
+                        games: payload.data.games || [],
+                        playthroughs: payload.data.playthroughs || []
+                    };
+
+                    if (payload.data.game_id) {
+                        container.dataset.gameId = String(payload.data.game_id);
+                    }
+
+                    if (payload.data.playthrough_id) {
+                        container.dataset.playthroughId = String(payload.data.playthrough_id);
+                    }
+
+                    buildGameOptions();
+                    updatePlaythroughOptions(container.dataset.gameId || '0');
+                })
+                .catch(function () {
+                    // Ignore refresh errors silently; the widget keeps its current state.
+                });
+        };
+
         container._lastProposedMemory = [];
         container._lastProposedObjectives = [];
 
@@ -58,7 +130,7 @@ document.addEventListener('DOMContentLoaded', function () {
             gameSelect.addEventListener('change', function () {
                 const selectedGameId = this.value;
                 container.dataset.gameId = selectedGameId;
-                updatePlaythroughOptions(selectedGameId);
+                refreshWidgetState(selectedGameId);
             });
         }
 
@@ -69,7 +141,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (gameSelect) {
-            updatePlaythroughOptions(container.dataset.gameId || gameSelect.value);
+            buildGameOptions();
+            updatePlaythroughOptions(container.dataset.gameId || '0');
+            refreshWidgetState(container.dataset.gameId || '0');
         }
 
         const addMessage = function (text, type) {
