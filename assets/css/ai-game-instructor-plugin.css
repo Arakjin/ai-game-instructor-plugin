@@ -110,6 +110,12 @@
     font-weight: 600;
 }
 
+.ai-game-instructor-send:disabled,
+.ai-game-instructor-save-memory:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .ai-game-instructor-save-memory {
     background: #16a34a;
 }

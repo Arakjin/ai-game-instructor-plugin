@@ -117,10 +117,30 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     buildGameOptions();
                     updatePlaythroughOptions(container.dataset.gameId || '0');
+                    syncWidgetAvailability();
                 })
                 .catch(function () {
                     // Ignore refresh errors silently; the widget keeps its current state.
                 });
+        };
+
+        const syncWidgetAvailability = function () {
+            const hasGame = !!(container.dataset.gameId && Number(container.dataset.gameId) > 0);
+            const hasPlaythrough = !!(container.dataset.playthroughId && Number(container.dataset.playthroughId) > 0);
+            const canChat = hasGame && hasPlaythrough;
+
+            if (sendButton) {
+                sendButton.disabled = !canChat;
+            }
+
+            if (input) {
+                input.disabled = !canChat;
+                input.placeholder = canChat ? 'Describe what happened and ask for help...' : 'Create a game and playthrough first...';
+            }
+
+            if (memoryPanel && !canChat) {
+                memoryPanel.style.display = 'none';
+            }
         };
 
         container._lastProposedMemory = [];
@@ -137,14 +157,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (playthroughSelect) {
             playthroughSelect.addEventListener('change', function () {
                 container.dataset.playthroughId = this.value;
+                syncWidgetAvailability();
             });
         }
 
         if (gameSelect) {
             buildGameOptions();
             updatePlaythroughOptions(container.dataset.gameId || '0');
+            syncWidgetAvailability();
             refreshWidgetState(container.dataset.gameId || '0');
         }
+
+        syncWidgetAvailability();
 
         const addMessage = function (text, type) {
             const item = document.createElement('div');
@@ -176,6 +200,11 @@ document.addEventListener('DOMContentLoaded', function () {
         };
 
         const sendMessage = function () {
+            if (!container.dataset.gameId || Number(container.dataset.gameId) <= 0 || !container.dataset.playthroughId || Number(container.dataset.playthroughId) <= 0) {
+                addMessage('Create a game and playthrough before sending a message.', 'assistant');
+                return;
+            }
+
             const value = input.value.trim();
             if (!value) {
                 return;
