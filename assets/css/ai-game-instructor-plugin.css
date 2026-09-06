@@ -23,6 +23,30 @@
     font-size: 1.2rem;
 }
 
+.ai-game-instructor-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.ai-game-instructor-selector label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.ai-game-instructor-selector select {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    background: #fff;
+}
+
 .ai-game-instructor-messages {
     display: flex;
     flex-direction: column;

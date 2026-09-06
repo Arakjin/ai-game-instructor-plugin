@@ -587,6 +587,28 @@ final class AI_Game_Instructor_Plugin
             'ai_game_guide'
         );
 
+        $games = $this->get_games();
+        $selected_game_id = absint($atts['game_id']);
+        if (!$selected_game_id && !empty($games)) {
+            $selected_game_id = (int) $games[0]['id'];
+        }
+
+        $playthroughs = $selected_game_id ? $this->get_playthroughs($selected_game_id) : array();
+        $selected_playthrough_id = absint($atts['playthrough_id']);
+        if (!$selected_playthrough_id && !empty($playthroughs)) {
+            $selected_playthrough_id = (int) $playthroughs[0]['id'];
+        }
+
+        $all_playthroughs = array();
+        foreach ($games as $game) {
+            $all_playthroughs = array_merge($all_playthroughs, $this->get_playthroughs((int) $game['id']));
+        }
+
+        $state_payload = wp_json_encode(array(
+            'games' => $games,
+            'playthroughs' => $all_playthroughs,
+        ));
+
         $wrapper_classes = 'ai-game-instructor-plugin';
         if (!empty($atts['class'])) {
             $wrapper_classes .= ' ' . esc_attr($atts['class']);
@@ -594,11 +616,37 @@ final class AI_Game_Instructor_Plugin
 
         ob_start();
         ?>
-        <div class="<?php echo esc_attr($wrapper_classes); ?>" data-game-id="<?php echo esc_attr((int) $atts['game_id']); ?>" data-playthrough-id="<?php echo esc_attr((int) $atts['playthrough_id']); ?>" data-title="<?php echo esc_attr($atts['title']); ?>" data-theme="<?php echo esc_attr($atts['theme']); ?>">
+        <div class="<?php echo esc_attr($wrapper_classes); ?>" data-game-id="<?php echo esc_attr($selected_game_id); ?>" data-playthrough-id="<?php echo esc_attr($selected_playthrough_id); ?>" data-title="<?php echo esc_attr($atts['title']); ?>" data-theme="<?php echo esc_attr($atts['theme']); ?>" data-state='<?php echo esc_attr($state_payload); ?>'>
             <div class="ai-game-instructor-chat">
                 <div class="ai-game-instructor-header">
                     <h3><?php echo esc_html($atts['title']); ?></h3>
                 </div>
+
+                <?php if (!empty($games)) : ?>
+                    <div class="ai-game-instructor-selector">
+                        <label>
+                            <span><?php esc_html_e('Game', 'ai-game-instructor'); ?></span>
+                            <select class="ai-game-instructor-game-select">
+                                <?php foreach ($games as $game) : ?>
+                                    <option value="<?php echo esc_attr((int) $game['id']); ?>" <?php selected((int) $game['id'], $selected_game_id); ?>>
+                                        <?php echo esc_html($game['title']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+
+                        <label>
+                            <span><?php esc_html_e('Playthrough', 'ai-game-instructor'); ?></span>
+                            <select class="ai-game-instructor-playthrough-select">
+                                <?php foreach ($playthroughs as $playthrough) : ?>
+                                    <option value="<?php echo esc_attr((int) $playthrough['id']); ?>" <?php selected((int) $playthrough['id'], $selected_playthrough_id); ?>>
+                                        <?php echo esc_html($playthrough['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                    </div>
+                <?php endif; ?>
 
                 <div class="ai-game-instructor-messages" aria-live="polite">
                     <div class="ai-game-instructor-message ai-game-instructor-message--assistant">
