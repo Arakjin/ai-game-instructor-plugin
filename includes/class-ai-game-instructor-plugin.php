@@ -35,6 +35,7 @@ final class AI_Game_Instructor_Plugin
         add_action('wp_ajax_nopriv_ai_game_instructor_send_message', array($this, 'ajax_send_message'));
         add_action('wp_ajax_ai_game_instructor_save_memory', array($this, 'ajax_save_memory'));
         add_action('wp_ajax_nopriv_ai_game_instructor_save_memory', array($this, 'ajax_save_memory'));
+        add_action('wp_ajax_ai_game_instructor_test_connection', array($this, 'ajax_test_connection'));
     }
 
     public static function activate()
@@ -1007,6 +1008,10 @@ final class AI_Game_Instructor_Plugin
                         <textarea id="response_style_prompt" name="response_style_prompt" rows="4" class="large-text"><?php echo esc_textarea($settings['response_style_prompt']); ?></textarea>
                     </p>
                     <?php submit_button(__('Save settings', 'ai-game-instructor')); ?>
+                    <button type="button" id="ai-game-instructor-test-connection" class="button button-secondary" style="margin-left:0.5rem;">
+                        <?php echo esc_html__('Test connection', 'ai-game-instructor'); ?>
+                    </button>
+                    <span id="ai-game-instructor-test-status" style="margin-left:0.75rem; display:inline-block; min-height:1.5em;"></span>
                 </form>
             </div>
 
@@ -1024,6 +1029,51 @@ final class AI_Game_Instructor_Plugin
                             helpBlock.style.display = matches ? 'block' : 'none';
                         });
                     };
+
+                    const statusEl = document.getElementById('ai-game-instructor-test-status');
+                    const testButton = document.getElementById('ai-game-instructor-test-connection');
+
+                    if (testButton) {
+                        testButton.addEventListener('click', function () {
+                            const form = testButton.closest('form');
+                            if (!form) {
+                                return;
+                            }
+
+                            const formData = new FormData(form);
+                            formData.append('action', 'ai_game_instructor_test_connection');
+                            formData.append('nonce', '<?php echo esc_js(wp_create_nonce('ai_game_instructor_nonce')); ?>');
+
+                            if (statusEl) {
+                                statusEl.textContent = 'Testing API connection...';
+                            }
+
+                            fetch('<?php echo esc_js(admin_url('admin-ajax.php')); ?>', {
+                                method: 'POST',
+                                body: formData,
+                                credentials: 'same-origin'
+                            })
+                                .then(function (response) {
+                                    return response.json();
+                                })
+                                .then(function (payload) {
+                                    if (!payload.success) {
+                                        throw new Error(payload.data && payload.data.message ? payload.data.message : 'Connection failed.');
+                                    }
+
+                                    if (statusEl) {
+                                        statusEl.textContent = payload.data && payload.data.message ? payload.data.message : 'Connection OK';
+                                        statusEl.style.color = '#0a7a2f';
+                                    }
+                                })
+                                .catch(function (error) {
+                                    if (statusEl) {
+                                        statusEl.textContent = error.message || 'Connection failed.';
+                                        statusEl.style.color = '#b91c1c';
+                                    }
+                                });
+                        });
+                    }
 
                     providerSelect.addEventListener('change', updateProviderHelp);
                     updateProviderHelp();
@@ -1457,7 +1507,12 @@ final class AI_Game_Instructor_Plugin
 
     public function call_ai_provider($prompt, $provider = 'groq', $model = '')
     {
-        $api_key = $this->get_provider_api_key();
+        return $this->call_ai_provider_with_config($prompt, $provider, $model, $this->get_provider_api_key(), $this->get_provider_api_url($provider));
+    }
+
+    public function call_ai_provider_with_config($prompt, $provider = 'groq', $model = '', $api_key = '', $api_url = '')
+    {
+        $api_key = trim((string) ($api_key ?: $this->get_provider_api_key()));
         if (empty($api_key)) {
             return array(
                 'error' => 'AI API key is not configured. Add it in the plugin settings or define one of the standard environment variables.',
@@ -1466,7 +1521,7 @@ final class AI_Game_Instructor_Plugin
 
         $provider = strtolower($provider ?: 'groq');
         $model = $model ?: $this->get_setting_value('ai_model', 'openai/gpt-oss-120b');
-        $endpoint = $this->get_provider_api_url($provider);
+        $endpoint = trim((string) ($api_url ?: $this->get_provider_api_url($provider)));
 
         if ('gemini' === $provider) {
             $endpoint = preg_replace('/\{model\}/', rawurlencode($model), $endpoint);
@@ -1668,6 +1723,29 @@ final class AI_Game_Instructor_Plugin
             'answer' => $answer,
             'proposed_memory' => $proposed_memory,
             'proposed_objectives' => $proposed_objectives,
+        ));
+    }
+
+    public function ajax_test_connection()
+    {
+        if (!wp_verify_nonce($_REQUEST['nonce'] ?? '', 'ai_game_instructor_nonce')) {
+            wp_send_json_error(array('message' => 'Invalid nonce.'), 403);
+        }
+
+        $provider = strtolower(sanitize_text_field(wp_unslash($_POST['provider'] ?? 'groq')));
+        $model = sanitize_text_field(wp_unslash($_POST['model'] ?? 'openai/gpt-oss-120b'));
+        $api_key = sanitize_text_field(wp_unslash($_POST['api_key'] ?? ''));
+        $api_url = esc_url_raw(wp_unslash($_POST['api_url'] ?? ''));
+
+        $response = $this->call_ai_provider_with_config('Reply with OK only.', $provider, $model, $api_key, $api_url);
+
+        if (!empty($response['error'])) {
+            wp_send_json_error(array('message' => $response['error']), 400);
+        }
+
+        wp_send_json_success(array(
+            'message' => 'AI connection is working.',
+            'response' => $response['answer'] ?? 'OK',
         ));
     }
 
