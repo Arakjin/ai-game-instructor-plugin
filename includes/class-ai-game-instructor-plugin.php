@@ -125,7 +125,8 @@ final class AI_Game_Instructor_Plugin
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
                 KEY game_id (game_id),
-                KEY document_id (document_id)
+                KEY document_id (document_id),
+                FULLTEXT KEY ft_game_chunks_heading_content (heading, content)
             ) {$charset_collate};",
 
             $wpdb->prefix . 'ai_gg_settings' => "CREATE TABLE IF NOT EXISTS {$wpdb->prefix}ai_gg_settings (
@@ -873,6 +874,26 @@ final class AI_Game_Instructor_Plugin
             <?php endif; ?>
 
             <div class="card" style="padding:1rem; margin-top:1rem; margin-bottom:1rem; max-width:900px;">
+                <h2><?php echo esc_html__('Shortcode usage', 'ai-game-instructor'); ?></h2>
+                <p><?php echo esc_html__('Use this shortcode on any page or post to display the game guide widget:', 'ai-game-instructor'); ?></p>
+                <p><code>[ai_game_guide]</code></p>
+
+                <?php $shortcode_example_game = !empty($games) ? $games[0] : null; $shortcode_example_playthroughs = $shortcode_example_game ? $this->get_playthroughs((int) $shortcode_example_game['id']) : array(); $shortcode_example_playthrough = !empty($shortcode_example_playthroughs) ? $shortcode_example_playthroughs[0] : null; ?>
+                <?php if ($shortcode_example_game && $shortcode_example_playthrough) : ?>
+                    <p><?php echo esc_html__('Example for your first game/playthrough:', 'ai-game-instructor'); ?></p>
+                    <pre><code>[ai_game_guide game_id="<?php echo esc_attr((int) $shortcode_example_game['id']); ?>" playthrough_id="<?php echo esc_attr((int) $shortcode_example_playthrough['id']); ?>" title="<?php echo esc_attr($shortcode_example_game['title']); ?>"]</code></pre>
+                    <button type="button" class="button button-secondary" data-copy-shortcode="[ai_game_guide game_id=&quot;<?php echo esc_attr((int) $shortcode_example_game['id']); ?>&quot; playthrough_id=&quot;<?php echo esc_attr((int) $shortcode_example_playthrough['id']); ?>&quot; title=&quot;<?php echo esc_attr($shortcode_example_game['title']); ?>&quot;]">
+                        <?php echo esc_html__('Copy example shortcode', 'ai-game-instructor'); ?>
+                    </button>
+                <?php else : ?>
+                    <p><?php echo esc_html__('Create a game and a playthrough to generate a ready-made example shortcode.', 'ai-game-instructor'); ?></p>
+                    <button type="button" class="button button-secondary" data-copy-shortcode="[ai_game_guide]">
+                        <?php echo esc_html__('Copy basic shortcode', 'ai-game-instructor'); ?>
+                    </button>
+                <?php endif; ?>
+            </div>
+
+            <div class="card" style="padding:1rem; margin-top:1rem; margin-bottom:1rem; max-width:900px;">
                 <h2><?php echo esc_html__('Create game', 'ai-game-instructor'); ?></h2>
                 <form method="post">
                     <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
@@ -1046,6 +1067,22 @@ final class AI_Game_Instructor_Plugin
                             }
                         }
                     };
+
+                    document.querySelectorAll('[data-copy-shortcode]').forEach(function (copyButton) {
+                        copyButton.addEventListener('click', function () {
+                            const shortcode = copyButton.getAttribute('data-copy-shortcode') || '[ai_game_guide]';
+
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(shortcode).then(function () {
+                                    const previousText = copyButton.textContent;
+                                    copyButton.textContent = 'Copied!';
+                                    window.setTimeout(function () {
+                                        copyButton.textContent = previousText;
+                                    }, 1500);
+                                });
+                            }
+                        });
+                    });
 
                     const statusEl = document.getElementById('ai-game-instructor-test-status');
                     const testButton = document.getElementById('ai-game-instructor-test-connection');
@@ -1374,11 +1411,15 @@ final class AI_Game_Instructor_Plugin
         $query = $wpdb->prepare($sql, $question, $game_id, $question);
         $rows = $wpdb->get_results($query, ARRAY_A);
 
-        if (!is_array($rows)) {
-            return array();
+        if (is_array($rows) && !empty($rows)) {
+            return $rows;
         }
 
-        return $rows;
+        $fallback_sql = "SELECT id, heading, content FROM {$table} WHERE game_id = %d ORDER BY created_at DESC LIMIT 6";
+        $fallback_query = $wpdb->prepare($fallback_sql, $game_id);
+        $fallback_rows = $wpdb->get_results($fallback_query, ARRAY_A);
+
+        return is_array($fallback_rows) ? $fallback_rows : array();
     }
 
     public function get_recent_memory($playthrough_id)
