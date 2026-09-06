@@ -285,6 +285,12 @@ final class AI_Game_Instructor_Plugin
                 'response_style_prompt' => sanitize_textarea_field(wp_unslash($_POST['response_style_prompt'] ?? '')),
             );
 
+            if ('gemini' === strtolower((string) ($settings['ai_provider'] ?? 'groq'))) {
+                $normalized = $this->normalize_provider_settings($settings['ai_provider'], $settings['ai_model'], $settings['ai_api_url']);
+                $settings['ai_model'] = $normalized['model'];
+                $settings['ai_api_url'] = $normalized['api_url'];
+            }
+
             $this->save_settings($settings);
         }
 
@@ -295,6 +301,12 @@ final class AI_Game_Instructor_Plugin
     public function save_settings($settings)
     {
         global $wpdb;
+
+        if (!empty($settings['ai_provider']) && 'gemini' === strtolower((string) $settings['ai_provider'])) {
+            $normalized = $this->normalize_provider_settings($settings['ai_provider'], $settings['ai_model'] ?? '', $settings['ai_api_url'] ?? '');
+            $settings['ai_model'] = $normalized['model'];
+            $settings['ai_api_url'] = $normalized['api_url'];
+        }
 
         foreach ($settings as $name => $value) {
             $table = $this->get_table_name('settings');
@@ -1050,7 +1062,7 @@ final class AI_Game_Instructor_Plugin
                             helpBlock.style.display = matches ? 'block' : 'none';
                         });
 
-                        const modelField = document.getElementById('ai_model');
+                                        const modelField = document.getElementById('ai_model');
                         if (modelField && !modelField.dataset.userEdited) {
                             const defaults = {
                                 groq: 'openai/gpt-oss-120b',
@@ -1062,7 +1074,8 @@ final class AI_Game_Instructor_Plugin
 
                             const defaultModel = defaults[selected] || 'gpt-4o-mini';
                             modelField.placeholder = defaultModel;
-                            if (!modelField.value || modelField.value === 'openai/gpt-oss-120b' || modelField.value === 'gpt-4o-mini' || modelField.value === 'gemini-1.5-flash' || modelField.value === 'gemini-2.0-flash') {
+                            const legacyGeminiModels = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.0-pro', 'models/gemini-1.5-flash', 'models/gemini-2.0-flash'];
+                            if (!modelField.value || modelField.value === 'openai/gpt-oss-120b' || modelField.value === 'gpt-4o-mini' || legacyGeminiModels.includes(modelField.value)) {
                                 modelField.value = defaultModel;
                             }
                         }
@@ -1092,6 +1105,22 @@ final class AI_Game_Instructor_Plugin
                             const form = testButton.closest('form');
                             if (!form) {
                                 return;
+                            }
+
+                            const providerInput = form.querySelector('[name="ai_provider"]');
+                            const modelInput = form.querySelector('[name="ai_model"]');
+                            const apiUrlInput = form.querySelector('[name="ai_api_url"]');
+
+                            if (providerInput && providerInput.value === 'gemini') {
+                                const legacyGeminiModels = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.0-pro', 'models/gemini-1.5-flash', 'models/gemini-2.0-flash'];
+                                const rawModel = (modelInput ? modelInput.value : '').trim();
+                                const normalizedModel = rawModel.replace(/^models\//i, '').replace(/:generateContent$/i, '').replace('gemini-1.5-flash', 'gemini-2.5-flash').replace('gemini-1.5-pro', 'gemini-2.5-pro').replace('gemini-2.0-flash', 'gemini-2.5-flash').replace('gemini-2.0-pro', 'gemini-2.5-pro');
+                                if (modelInput) {
+                                    modelInput.value = normalizedModel || 'gemini-2.5-flash';
+                                }
+                                if (apiUrlInput && (!apiUrlInput.value || legacyGeminiModels.includes(rawModel) || apiUrlInput.value.includes('/models/gemini-1.5-') || apiUrlInput.value.includes('/models/gemini-2.0-'))) {
+                                    apiUrlInput.value = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelInput ? modelInput.value : 'gemini-2.5-flash') + ':generateContent';
+                                }
                             }
 
                             const formData = new FormData(form);
@@ -1342,6 +1371,56 @@ final class AI_Game_Instructor_Plugin
         }
 
         return 'https://api.groq.com/openai/v1/chat/completions';
+    }
+
+    public function normalize_provider_settings($provider = '', $model = '', $api_url = '')
+    {
+        $provider = strtolower((string) ($provider ?: $this->get_setting_value('ai_provider', 'groq')));
+        $model = trim((string) $model);
+        $api_url = trim((string) $api_url);
+
+        if ('gemini' !== $provider) {
+            return array(
+                'provider' => $provider,
+                'model' => $model,
+                'api_url' => $api_url,
+            );
+        }
+
+        $legacy_model_map = array(
+            'gemini-1.5-flash' => 'gemini-2.5-flash',
+            'gemini-1.5-pro' => 'gemini-2.5-pro',
+            'gemini-2.0-flash' => 'gemini-2.5-flash',
+            'gemini-2.0-pro' => 'gemini-2.5-pro',
+            'models/gemini-1.5-flash' => 'gemini-2.5-flash',
+            'models/gemini-1.5-pro' => 'gemini-2.5-pro',
+            'models/gemini-2.0-flash' => 'gemini-2.5-flash',
+            'models/gemini-2.0-pro' => 'gemini-2.5-pro',
+        );
+
+        $model = preg_replace('/^models\//i', '', $model);
+        $model = preg_replace('/:generateContent$/i', '', $model);
+        $model = $legacy_model_map[$model] ?? $model;
+
+        if ('' === $model) {
+            $model = 'gemini-2.5-flash';
+        }
+
+        $default_url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
+        if ('' === $api_url) {
+            $api_url = $default_url;
+        } else {
+            $api_url = preg_replace('/\/models\/[^\/]+:generateContent$/i', '/models/' . rawurlencode($model) . ':generateContent', $api_url);
+            if (false === strpos($api_url, '/models/')) {
+                $api_url = $default_url;
+            }
+        }
+
+        return array(
+            'provider' => $provider,
+            'model' => $model,
+            'api_url' => $api_url,
+        );
     }
 
     public function get_setting_value($key, $default = '')
@@ -1823,6 +1902,11 @@ final class AI_Game_Instructor_Plugin
         $model = sanitize_text_field(wp_unslash($_POST['model'] ?? 'openai/gpt-oss-120b'));
         $api_key = sanitize_text_field(wp_unslash($_POST['api_key'] ?? ''));
         $api_url = esc_url_raw(wp_unslash($_POST['api_url'] ?? ''));
+
+        $normalized = $this->normalize_provider_settings($provider, $model, $api_url);
+        $provider = $normalized['provider'];
+        $model = $normalized['model'];
+        $api_url = $normalized['api_url'];
 
         $response = $this->call_ai_provider_with_config('Reply with OK only.', $provider, $model, $api_key, $api_url);
 
