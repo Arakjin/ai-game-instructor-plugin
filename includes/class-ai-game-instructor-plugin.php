@@ -959,8 +959,25 @@ final class AI_Game_Instructor_Plugin
                     </p>
                     <p>
                         <label for="ai_provider"><?php echo esc_html__('AI provider', 'ai-game-instructor'); ?></label><br />
-                        <input id="ai_provider" type="text" name="ai_provider" class="regular-text" value="<?php echo esc_attr($settings['ai_provider']); ?>" placeholder="groq or openai" />
+                        <select id="ai_provider" name="ai_provider" class="regular-text">
+                            <?php foreach ($this->get_provider_options() as $provider_key => $provider_config) : ?>
+                                <option value="<?php echo esc_attr($provider_key); ?>" <?php selected($settings['ai_provider'], $provider_key); ?>>
+                                    <?php echo esc_html($provider_config['label']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </p>
+
+                    <?php $provider_options = $this->get_provider_options(); ?>
+                    <?php foreach ($provider_options as $provider_key => $provider_config) : ?>
+                        <div class="ai-provider-help" data-provider-help="<?php echo esc_attr($provider_key); ?>" <?php if ($settings['ai_provider'] !== $provider_key) : ?>style="display:none;"<?php endif; ?>>
+                            <p><strong><?php echo esc_html($provider_config['label']); ?></strong></p>
+                            <p><?php echo esc_html($provider_config['api_key_help']); ?></p>
+                            <p><?php echo esc_html($provider_config['url_help']); ?></p>
+                            <p><?php echo esc_html($provider_config['model_help']); ?></p>
+                        </div>
+                    <?php endforeach; ?>
+
                     <p>
                         <label for="ai_model"><?php echo esc_html__('AI model', 'ai-game-instructor'); ?></label><br />
                         <input id="ai_model" type="text" name="ai_model" class="regular-text" value="<?php echo esc_attr($settings['ai_model']); ?>" placeholder="openai/gpt-oss-120b" />
@@ -992,6 +1009,26 @@ final class AI_Game_Instructor_Plugin
                     <?php submit_button(__('Save settings', 'ai-game-instructor')); ?>
                 </form>
             </div>
+
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    const providerSelect = document.getElementById('ai_provider');
+                    if (!providerSelect) {
+                        return;
+                    }
+
+                    const updateProviderHelp = function () {
+                        const selected = providerSelect.value;
+                        document.querySelectorAll('.ai-provider-help').forEach(function (helpBlock) {
+                            const matches = helpBlock.getAttribute('data-provider-help') === selected;
+                            helpBlock.style.display = matches ? 'block' : 'none';
+                        });
+                    };
+
+                    providerSelect.addEventListener('change', updateProviderHelp);
+                    updateProviderHelp();
+                });
+            </script>
 
             <div class="card" style="padding:1rem; margin-top:1rem; max-width:900px;">
                 <h2><?php echo esc_html__('Games', 'ai-game-instructor'); ?></h2>
@@ -1081,6 +1118,42 @@ final class AI_Game_Instructor_Plugin
         );
     }
 
+    public function get_provider_options()
+    {
+        return array(
+            'groq' => array(
+                'label' => 'Groq',
+                'api_key_help' => 'Create a Groq API key from https://console.groq.com/keys.',
+                'url_help' => 'Default endpoint: https://api.groq.com/openai/v1/chat/completions',
+                'model_help' => 'Examples: openai/gpt-oss-120b, llama-3.3-70b-versatile, deepseek-r1-distill-llama-70b',
+            ),
+            'openai' => array(
+                'label' => 'OpenAI',
+                'api_key_help' => 'Create a key at https://platform.openai.com/api-keys.',
+                'url_help' => 'Default endpoint: https://api.openai.com/v1/chat/completions',
+                'model_help' => 'Examples: gpt-4o-mini, gpt-4.1-mini, gpt-4o',
+            ),
+            'gemini' => array(
+                'label' => 'Google Gemini',
+                'api_key_help' => 'Create a Gemini API key in Google AI Studio: https://aistudio.google.com/app/apikey',
+                'url_help' => 'Default endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
+                'model_help' => 'Examples: gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash',
+            ),
+            'azure_openai' => array(
+                'label' => 'Azure OpenAI',
+                'api_key_help' => 'Get the key from Azure Portal → your Azure OpenAI resource → Keys and Endpoint.',
+                'url_help' => 'Use your Azure endpoint, typically: https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-02-01',
+                'model_help' => 'Use the deployment name here, not the base model family name.',
+            ),
+            'custom' => array(
+                'label' => 'Custom OpenAI-compatible API',
+                'api_key_help' => 'Use any compatible endpoint that expects a bearer token or API key header.',
+                'url_help' => 'Set the full endpoint URL in the AI API URL field.',
+                'model_help' => 'Use the provider model name expected by your endpoint.',
+            ),
+        );
+    }
+
     public function get_provider_api_key()
     {
         $settings = $this->get_settings_map();
@@ -1093,6 +1166,7 @@ final class AI_Game_Instructor_Plugin
             'AI_GAME_INSTRUCTOR_GROQ_API_KEY',
             'GROQ_API_KEY',
             'OPENAI_API_KEY',
+            'GEMINI_API_KEY',
         );
 
         foreach ($candidates as $candidate) {
@@ -1120,6 +1194,18 @@ final class AI_Game_Instructor_Plugin
 
         if ('openai' === $provider) {
             return 'https://api.openai.com/v1/chat/completions';
+        }
+
+        if ('gemini' === $provider) {
+            return 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+        }
+
+        if ('azure_openai' === $provider) {
+            return 'https://<your-resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-02-01';
+        }
+
+        if ('custom' === $provider) {
+            return '';
         }
 
         return 'https://api.groq.com/openai/v1/chat/completions';
@@ -1374,13 +1460,101 @@ final class AI_Game_Instructor_Plugin
         $api_key = $this->get_provider_api_key();
         if (empty($api_key)) {
             return array(
-                'error' => 'AI API key is not configured. Add AI_GAME_INSTRUCTOR_API_KEY or GROQ_API_KEY in wp-config.php or your environment.',
+                'error' => 'AI API key is not configured. Add it in the plugin settings or define one of the standard environment variables.',
             );
         }
 
         $provider = strtolower($provider ?: 'groq');
         $model = $model ?: $this->get_setting_value('ai_model', 'openai/gpt-oss-120b');
         $endpoint = $this->get_provider_api_url($provider);
+
+        if ('gemini' === $provider) {
+            $endpoint = preg_replace('/\{model\}/', rawurlencode($model), $endpoint);
+            $request_body = array(
+                'contents' => array(
+                    array(
+                        'parts' => array(
+                            array('text' => $prompt),
+                        ),
+                    ),
+                ),
+                'generationConfig' => array(
+                    'temperature' => 0.4,
+                ),
+            );
+
+            $response = wp_remote_post(
+                $endpoint . '?key=' . rawurlencode($api_key),
+                array(
+                    'timeout' => 45,
+                    'headers' => array(
+                        'Content-Type' => 'application/json',
+                    ),
+                    'body' => wp_json_encode($request_body),
+                )
+            );
+
+            if (is_wp_error($response)) {
+                return array('error' => $response->get_error_message());
+            }
+
+            $status = wp_remote_retrieve_response_code($response);
+            if (200 !== $status) {
+                $body = wp_remote_retrieve_body($response);
+                return array('error' => 'Gemini returned status: ' . $status . ' - ' . $body);
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            $content = $body['candidates'][0]['content']['parts'][0]['text'] ?? '';
+            if (empty($content)) {
+                return array('error' => 'Empty response from Gemini.');
+            }
+
+            return $this->normalize_ai_response($content);
+        }
+
+        if ('azure_openai' === $provider) {
+            $request_body = array(
+                'messages' => array(
+                    array(
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ),
+                ),
+                'temperature' => 0.4,
+                'response_format' => array('type' => 'json_object'),
+            );
+
+            $response = wp_remote_post(
+                $endpoint,
+                array(
+                    'timeout' => 45,
+                    'headers' => array(
+                        'api-key' => $api_key,
+                        'Content-Type' => 'application/json',
+                    ),
+                    'body' => wp_json_encode($request_body),
+                )
+            );
+
+            if (is_wp_error($response)) {
+                return array('error' => $response->get_error_message());
+            }
+
+            $status = wp_remote_retrieve_response_code($response);
+            if (200 !== $status) {
+                $body = wp_remote_retrieve_body($response);
+                return array('error' => 'Azure OpenAI returned status: ' . $status . ' - ' . $body);
+            }
+
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            $content = $body['choices'][0]['message']['content'] ?? '';
+            if (empty($content)) {
+                return array('error' => 'Empty response from Azure OpenAI.');
+            }
+
+            return $this->normalize_ai_response($content);
+        }
 
         $request_body = array(
             'model' => $model,
@@ -1426,6 +1600,16 @@ final class AI_Game_Instructor_Plugin
             return array('error' => 'Empty response from AI provider.');
         }
 
+        return $this->normalize_ai_response($content);
+    }
+
+    public function normalize_ai_response($content)
+    {
+        $content = trim((string) $content);
+        if (empty($content)) {
+            return array('error' => 'Empty response from AI provider.');
+        }
+
         $decoded = json_decode($content, true);
         if (is_array($decoded)) {
             return $decoded;
@@ -1433,7 +1617,7 @@ final class AI_Game_Instructor_Plugin
 
         $cleaned = preg_replace('/^```json\s*/i', '', $content);
         $cleaned = preg_replace('/```$/', '', $cleaned);
-        $cleaned = trim($cleaned);
+        $cleaned = trim((string) $cleaned);
         $decoded = json_decode($cleaned, true);
 
         if (is_array($decoded)) {

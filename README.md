@@ -42,14 +42,43 @@ You can also add a custom class or theme:
 
 ## AI setup
 
-The plugin looks for an API key in either:
+You can connect the plugin to multiple AI providers from the admin settings page under "Agent settings".
+
+### Supported providers
+
+- Groq
+  - Good for cheap and fast usage
+  - API key: from https://console.groq.com/keys
+  - Example model: `openai/gpt-oss-120b` or `llama-3.3-70b-versatile`
+
+- OpenAI
+  - API key: from https://platform.openai.com/api-keys
+  - Example model: `gpt-4o-mini`, `gpt-4.1-mini`, `gpt-4o`
+
+- Google Gemini
+  - API key: from https://aistudio.google.com/app/apikey
+  - Example model: `gemini-1.5-flash`, `gemini-1.5-pro`, `gemini-2.0-flash`
+
+- Azure OpenAI
+  - API key and endpoint: from Azure Portal → your Azure OpenAI resource → Keys and Endpoint
+  - Use the deployment name as the model value
+  - Example URL pattern: `https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-02-01`
+
+- Custom OpenAI-compatible endpoint
+  - Use a custom endpoint that accepts the same OpenAI-style chat data format
+  - Put the full endpoint URL in the AI API URL field
+
+### Environment fallback
+
+The plugin still checks for these environment variables if you prefer server-level config:
 
 - `AI_GAME_INSTRUCTOR_API_KEY`
 - `AI_GAME_INSTRUCTOR_GROQ_API_KEY`
 - `GROQ_API_KEY`
 - `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
 
-You can define these in `wp-config.php` or in your environment before WordPress boots. Example:
+Example:
 
 ```php
 define('AI_GAME_INSTRUCTOR_API_KEY', 'your-key-here');
