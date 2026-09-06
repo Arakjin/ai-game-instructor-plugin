@@ -187,7 +187,29 @@ document.addEventListener('DOMContentLoaded', function () {
                 actions.appendChild(pushBtn);
                 item.appendChild(actions);
 
+                const disableAllPushButtonsExcept = function (exceptBtn) {
+                    const buttons = container.querySelectorAll('.ai-game-instructor-push-response');
+                    buttons.forEach(function (b) {
+                        try {
+                            if (exceptBtn && b === exceptBtn) {
+                                b.disabled = false;
+                            } else {
+                                b.disabled = true;
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
+                    });
+                };
+
+                // When adding a new assistant message, disable older push buttons and keep this one enabled
+                disableAllPushButtonsExcept(pushBtn);
+
                 pushBtn.addEventListener('click', function () {
+                    // immediately disable this button to prevent double-clicks
+                    disableAllPushButtonsExcept(pushBtn);
+                    pushBtn.disabled = true;
+
                     const formData = new FormData();
                     formData.append('action', 'ai_game_instructor_extract_summary');
                     formData.append('nonce', aiGameInstructorData.nonce);
