@@ -565,6 +565,19 @@ final class AI_Game_Instructor_Plugin
         return $rows;
     }
 
+    public function get_all_playthroughs()
+    {
+        global $wpdb;
+
+        $table = $this->get_table_name('playthroughs');
+        $rows = $wpdb->get_results(
+            "SELECT id, game_id, name, created_at FROM {$table} ORDER BY created_at DESC",
+            ARRAY_A
+        );
+
+        return is_array($rows) ? $rows : array();
+    }
+
     public function get_settings_map()
     {
         global $wpdb;
@@ -763,13 +776,12 @@ final class AI_Game_Instructor_Plugin
 
         $games = $this->get_games();
         $settings = $this->get_settings_map();
-        $playthroughs = array();
+        $playthroughs = $this->get_all_playthroughs();
+        $documents = array();
 
-        if (!empty($games)) {
-            $playthroughs = $this->get_playthroughs((int) $games[0]['id']);
+        foreach ($games as $game) {
+            $documents = array_merge($documents, $this->get_game_documents((int) $game['id']));
         }
-
-        $documents = !empty($games) ? $this->get_game_documents((int) $games[0]['id']) : array();
 
         ?>
         <div class="wrap">
@@ -917,8 +929,9 @@ final class AI_Game_Instructor_Plugin
                 <?php else : ?>
                     <ul>
                         <?php foreach ($playthroughs as $playthrough) : ?>
+                            <?php $playthrough_game = null; foreach ($games as $game) { if ((int) $game['id'] === (int) $playthrough['game_id']) { $playthrough_game = $game; break; } } ?>
                             <li>
-                                <?php echo esc_html($playthrough['name']); ?>
+                                <strong><?php echo esc_html($playthrough_game['title'] ?? 'Unknown game'); ?></strong> — <?php echo esc_html($playthrough['name']); ?>
                                 <form method="post" style="display:inline-block; margin-left:0.5rem;">
                                     <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
                                     <input type="hidden" name="ai_game_instructor_action" value="delete_playthrough" />
