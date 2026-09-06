@@ -1055,14 +1055,14 @@ final class AI_Game_Instructor_Plugin
                             const defaults = {
                                 groq: 'openai/gpt-oss-120b',
                                 openai: 'gpt-4o-mini',
-                                gemini: 'gemini-1.5-flash',
+                                gemini: 'gemini-2.5-flash',
                                 azure_openai: 'gpt-4o-mini',
                                 custom: 'gpt-4o-mini'
                             };
 
                             const defaultModel = defaults[selected] || 'gpt-4o-mini';
                             modelField.placeholder = defaultModel;
-                            if (!modelField.value || modelField.value === 'openai/gpt-oss-120b' || modelField.value === 'gpt-4o-mini' || modelField.value === 'gemini-1.5-flash') {
+                            if (!modelField.value || modelField.value === 'openai/gpt-oss-120b' || modelField.value === 'gpt-4o-mini' || modelField.value === 'gemini-1.5-flash' || modelField.value === 'gemini-2.0-flash') {
                                 modelField.value = defaultModel;
                             }
                         }
@@ -1241,7 +1241,7 @@ final class AI_Game_Instructor_Plugin
                 'label' => 'Google Gemini',
                 'api_key_help' => 'Create a Gemini API key in Google AI Studio: https://aistudio.google.com/app/apikey',
                 'url_help' => 'Default endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-                'model_help' => 'Examples: gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash',
+                'model_help' => 'Examples: gemini-2.5-flash, gemini-2.5-pro, gemini-3.6-flash',
             ),
             'azure_openai' => array(
                 'label' => 'Azure OpenAI',
@@ -1306,7 +1306,7 @@ final class AI_Game_Instructor_Plugin
         }
 
         if ('gemini' === $provider) {
-            return 'gemini-1.5-flash';
+            return 'gemini-2.5-flash';
         }
 
         if ('azure_openai' === $provider) {
@@ -1330,7 +1330,7 @@ final class AI_Game_Instructor_Plugin
         }
 
         if ('gemini' === $provider) {
-            return 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+            return 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
         }
 
         if ('azure_openai' === $provider) {
