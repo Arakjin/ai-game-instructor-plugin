@@ -243,26 +243,21 @@ final class AI_Game_Instructor_Plugin
         if ('delete_game' === $action) {
             $game_id = absint($_POST['game_id'] ?? 0);
             if ($game_id) {
-                global $wpdb;
-                $wpdb->delete($this->get_table_name('games'), array('id' => $game_id), array('%d'));
+                $this->delete_game_data($game_id);
             }
         }
 
         if ('delete_playthrough' === $action) {
             $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
             if ($playthrough_id) {
-                global $wpdb;
-                $wpdb->delete($this->get_table_name('playthroughs'), array('id' => $playthrough_id), array('%d'));
+                $this->delete_playthrough_data($playthrough_id);
             }
         }
 
         if ('reset_playthrough' === $action) {
             $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
             if ($playthrough_id) {
-                global $wpdb;
-                $wpdb->delete($this->get_table_name('memory'), array('playthrough_id' => $playthrough_id), array('%d'));
-                $wpdb->delete($this->get_table_name('objectives'), array('playthrough_id' => $playthrough_id), array('%d'));
-                $wpdb->delete($this->get_table_name('messages'), array('conversation_id' => $playthrough_id), array('%d'));
+                $this->reset_playthrough_data($playthrough_id);
             }
         }
 
@@ -298,6 +293,76 @@ final class AI_Game_Instructor_Plugin
                 )
             );
         }
+    }
+
+    public function reset_playthrough_data($playthrough_id)
+    {
+        global $wpdb;
+
+        $conversation_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT id FROM {$this->get_table_name('conversations')} WHERE playthrough_id = %d",
+                $playthrough_id
+            )
+        );
+
+        if (!empty($conversation_ids)) {
+            $placeholders = implode(',', array_fill(0, count($conversation_ids), '%d'));
+            $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$this->get_table_name('messages')} WHERE conversation_id IN ($placeholders)",
+                    ...$conversation_ids
+                )
+            );
+        }
+
+        $wpdb->delete($this->get_table_name('conversations'), array('playthrough_id' => $playthrough_id), array('%d'));
+        $wpdb->delete($this->get_table_name('memory'), array('playthrough_id' => $playthrough_id), array('%d'));
+        $wpdb->delete($this->get_table_name('objectives'), array('playthrough_id' => $playthrough_id), array('%d'));
+    }
+
+    public function delete_playthrough_data($playthrough_id)
+    {
+        $this->reset_playthrough_data($playthrough_id);
+        global $wpdb;
+        $wpdb->delete($this->get_table_name('playthroughs'), array('id' => $playthrough_id), array('%d'));
+    }
+
+    public function delete_game_data($game_id)
+    {
+        global $wpdb;
+
+        $playthrough_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT id FROM {$this->get_table_name('playthroughs')} WHERE game_id = %d",
+                $game_id
+            )
+        );
+
+        foreach ($playthrough_ids as $playthrough_id) {
+            $this->delete_playthrough_data((int) $playthrough_id);
+        }
+
+        $document_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT id FROM {$this->get_table_name('game_documents')} WHERE game_id = %d",
+                $game_id
+            )
+        );
+
+        if (!empty($document_ids)) {
+            $placeholders = implode(',', array_fill(0, count($document_ids), '%d'));
+            $wpdb->query(
+                $wpdb->prepare(
+                    "DELETE FROM {$this->get_table_name('game_chunks')} WHERE document_id IN ($placeholders)",
+                    ...$document_ids
+                )
+            );
+        }
+
+        $wpdb->delete($this->get_table_name('game_documents'), array('game_id' => $game_id), array('%d'));
+        $wpdb->delete($this->get_table_name('game_chunks'), array('game_id' => $game_id), array('%d'));
+        $wpdb->delete($this->get_table_name('games'), array('id' => $game_id), array('%d'));
     }
 
     public function get_games()
