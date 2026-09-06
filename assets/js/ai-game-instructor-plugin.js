@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const memoryPanel = container.querySelector('.ai-game-instructor-memory-panel');
         const memoryList = container.querySelector('.ai-game-instructor-memory-list');
 
+        container._lastProposedMemory = [];
+        container._lastProposedObjectives = [];
+
         const addMessage = function (text, type) {
             const item = document.createElement('div');
             item.className = 'ai-game-instructor-message ai-game-instructor-message--' + type;
@@ -21,10 +24,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const showMemory = function (items) {
             if (!items || !items.length) {
+                container._lastProposedMemory = [];
                 memoryPanel.style.display = 'none';
                 return;
             }
 
+            container._lastProposedMemory = items;
             memoryList.innerHTML = '';
             items.forEach(function (item) {
                 const li = document.createElement('li');
@@ -67,6 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     const answer = payload.data.answer || 'No answer returned.';
                     addMessage(answer, 'assistant');
+                    container._lastProposedObjectives = payload.data.proposed_objectives || [];
                     showMemory(payload.data.proposed_memory || []);
                 })
                 .catch(function () {
@@ -90,6 +96,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 formData.append('nonce', aiGameInstructorData.nonce);
                 formData.append('game_id', container.dataset.gameId || '0');
                 formData.append('playthrough_id', container.dataset.playthroughId || '0');
+                formData.append('memory', JSON.stringify(container._lastProposedMemory || []));
+                formData.append('objectives', JSON.stringify(container._lastProposedObjectives || []));
 
                 fetch(aiGameInstructorData.ajaxUrl, {
                     method: 'POST',
@@ -97,6 +105,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     credentials: 'same-origin'
                 }).then(function () {
                     memoryPanel.style.display = 'none';
+                    container._lastProposedMemory = [];
+                    container._lastProposedObjectives = [];
                 });
             });
         }

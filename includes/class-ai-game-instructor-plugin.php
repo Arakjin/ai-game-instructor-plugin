@@ -229,6 +229,43 @@ final class AI_Game_Instructor_Plugin
             }
         }
 
+        if ('import_game_knowledge' === $action) {
+            $game_id = absint($_POST['knowledge_game_id'] ?? 0);
+            $title = trim(sanitize_text_field(wp_unslash($_POST['knowledge_title'] ?? 'Imported knowledge')));
+            $content = trim(wp_unslash($_POST['knowledge_text'] ?? ''));
+            $source_type = sanitize_text_field(wp_unslash($_POST['knowledge_source_type'] ?? 'manual'));
+
+            if ($game_id && !empty($content)) {
+                $this->import_game_knowledge($game_id, $title, $content, $source_type);
+            }
+        }
+
+        if ('delete_game' === $action) {
+            $game_id = absint($_POST['game_id'] ?? 0);
+            if ($game_id) {
+                global $wpdb;
+                $wpdb->delete($this->get_table_name('games'), array('id' => $game_id), array('%d'));
+            }
+        }
+
+        if ('delete_playthrough' === $action) {
+            $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
+            if ($playthrough_id) {
+                global $wpdb;
+                $wpdb->delete($this->get_table_name('playthroughs'), array('id' => $playthrough_id), array('%d'));
+            }
+        }
+
+        if ('reset_playthrough' === $action) {
+            $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
+            if ($playthrough_id) {
+                global $wpdb;
+                $wpdb->delete($this->get_table_name('memory'), array('playthrough_id' => $playthrough_id), array('%d'));
+                $wpdb->delete($this->get_table_name('objectives'), array('playthrough_id' => $playthrough_id), array('%d'));
+                $wpdb->delete($this->get_table_name('messages'), array('conversation_id' => $playthrough_id), array('%d'));
+            }
+        }
+
         if ('save_settings' === $action) {
             $settings = array(
                 'agent_name' => sanitize_text_field(wp_unslash($_POST['agent_name'] ?? 'AI Game Guide')),
@@ -278,6 +315,161 @@ final class AI_Game_Instructor_Plugin
         }
 
         return $rows;
+    }
+
+    public function save_objectives_for_playthrough($playthrough_id, $objectives)
+    {
+        if (!$playthrough_id || !is_array($objectives)) {
+            return 0;
+        }
+
+        global $wpdb;
+        $table = $this->get_table_name('objectives');
+        $saved = 0;
+
+        foreach ($objectives as $objective) {
+            $text = isset($objective['text']) ? trim((string) $objective['text']) : '';
+            if ('' === $text) {
+                continue;
+            }
+
+            $wpdb->insert(
+                $table,
+                array(
+                    'playthrough_id' => $playthrough_id,
+                    'text' => $text,
+                    'status' => isset($objective['status']) ? sanitize_text_field($objective['status']) : 'active',
+                ),
+                array('%d', '%s', '%s')
+            );
+
+            $saved++;
+        }
+
+        return $saved;
+    }
+
+    public function get_game_documents($game_id = 0)
+    {
+        global $wpdb;
+
+        $table = $this->get_table_name('game_documents');
+        $sql = "SELECT id, game_id, title, source_type, created_at FROM {$table}";
+        $params = array();
+
+        if ($game_id) {
+            $sql .= ' WHERE game_id = %d';
+            $params[] = $game_id;
+        }
+
+        $sql .= ' ORDER BY created_at DESC';
+
+        if (!empty($params)) {
+            $sql = $wpdb->prepare($sql, $params);
+        }
+
+        $rows = $wpdb->get_results($sql, ARRAY_A);
+
+        return is_array($rows) ? $rows : array();
+    }
+
+    public function chunk_text_into_segments($content, $max_words = 1000)
+    {
+        $normalized = preg_replace('/\r\n|\r/', "\n", (string) $content);
+        $normalized = preg_replace('/\s+/', ' ', trim($normalized));
+
+        if ('' === $normalized) {
+            return array();
+        }
+
+        $segments = preg_split('/(?<=\.)\s+|\n\s*\n+/', $normalized);
+        $chunks = array();
+        $current = '';
+
+        foreach ($segments as $segment) {
+            $segment = trim((string) $segment);
+            if ('' === $segment) {
+                continue;
+            }
+
+            $segment_words = preg_split('/\s+/', $segment);
+            $current_words = preg_split('/\s+/', trim($current));
+            $count_current = count(array_filter($current_words, static fn ($word) => '' !== trim((string) $word)));
+            $count_segment = count(array_filter($segment_words, static fn ($word) => '' !== trim((string) $word)));
+
+            if ('' !== $current && ($count_current + $count_segment) > $max_words) {
+                $chunks[] = trim($current);
+                $current = $segment;
+                continue;
+            }
+
+            $current = ('' === $current) ? $segment : $current . ' ' . $segment;
+        }
+
+        if ('' !== trim($current)) {
+            $chunks[] = trim($current);
+        }
+
+        return $chunks;
+    }
+
+    public function import_game_knowledge($game_id, $title, $content, $source_type = 'manual')
+    {
+        global $wpdb;
+
+        $game_id = absint($game_id);
+        $title = trim((string) $title);
+        $content = trim((string) $content);
+
+        if (!$game_id || '' === $content) {
+            return false;
+        }
+
+        if ('' === $title) {
+            $title = 'Imported knowledge';
+        }
+
+        $document_id = $wpdb->insert(
+            $this->get_table_name('game_documents'),
+            array(
+                'game_id' => $game_id,
+                'title' => $title,
+                'source_type' => sanitize_text_field($source_type),
+                'original_text' => $content,
+            ),
+            array('%d', '%s', '%s', '%s')
+        );
+
+        if (false === $document_id) {
+            return false;
+        }
+
+        $document_id = (int) $wpdb->insert_id;
+        $chunks = $this->chunk_text_into_segments($content, 900);
+
+        if (empty($chunks)) {
+            $chunks = array($content);
+        }
+
+        foreach ($chunks as $index => $chunk) {
+            $heading = $title;
+            if (count($chunks) > 1) {
+                $heading .= ' (Part ' . ((int) $index + 1) . ')';
+            }
+
+            $wpdb->insert(
+                $this->get_table_name('game_chunks'),
+                array(
+                    'game_id' => $game_id,
+                    'document_id' => $document_id,
+                    'heading' => $heading,
+                    'content' => $chunk,
+                ),
+                array('%d', '%d', '%s', '%s')
+            );
+        }
+
+        return true;
     }
 
     public function get_playthroughs($game_id = 0)
@@ -464,6 +656,8 @@ final class AI_Game_Instructor_Plugin
             $playthroughs = $this->get_playthroughs((int) $games[0]['id']);
         }
 
+        $documents = !empty($games) ? $this->get_game_documents((int) $games[0]['id']) : array();
+
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__('AI Game Instructor', 'ai-game-instructor'); ?></h1>
@@ -507,6 +701,40 @@ final class AI_Game_Instructor_Plugin
                         <input id="playthrough_name" type="text" name="playthrough_name" class="regular-text" required />
                     </p>
                     <?php submit_button(__('Create playthrough', 'ai-game-instructor')); ?>
+                </form>
+            </div>
+
+            <div class="card" style="padding:1rem; margin-top:1rem; margin-bottom:1rem; max-width:900px;">
+                <h2><?php echo esc_html__('Import game knowledge', 'ai-game-instructor'); ?></h2>
+                <form method="post">
+                    <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
+                    <input type="hidden" name="ai_game_instructor_action" value="import_game_knowledge" />
+                    <p>
+                        <label for="knowledge_game_id"><?php echo esc_html__('Game', 'ai-game-instructor'); ?></label><br />
+                        <select id="knowledge_game_id" name="knowledge_game_id" required>
+                            <?php foreach ($games as $game) : ?>
+                                <option value="<?php echo esc_attr((int) $game['id']); ?>"><?php echo esc_html($game['title']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </p>
+                    <p>
+                        <label for="knowledge_title"><?php echo esc_html__('Knowledge title', 'ai-game-instructor'); ?></label><br />
+                        <input id="knowledge_title" type="text" name="knowledge_title" class="regular-text" value="Imported knowledge" />
+                    </p>
+                    <p>
+                        <label for="knowledge_source_type"><?php echo esc_html__('Source type', 'ai-game-instructor'); ?></label><br />
+                        <select id="knowledge_source_type" name="knowledge_source_type">
+                            <option value="manual"><?php echo esc_html__('Manual', 'ai-game-instructor'); ?></option>
+                            <option value="walkthrough"><?php echo esc_html__('Walkthrough', 'ai-game-instructor'); ?></option>
+                            <option value="faq"><?php echo esc_html__('FAQ', 'ai-game-instructor'); ?></option>
+                            <option value="notes"><?php echo esc_html__('Notes', 'ai-game-instructor'); ?></option>
+                        </select>
+                    </p>
+                    <p>
+                        <label for="knowledge_text"><?php echo esc_html__('Knowledge text', 'ai-game-instructor'); ?></label><br />
+                        <textarea id="knowledge_text" name="knowledge_text" rows="12" class="large-text" placeholder="Paste a walkthrough, quest guide, or notes here..."></textarea>
+                    </p>
+                    <?php submit_button(__('Import knowledge', 'ai-game-instructor')); ?>
                 </form>
             </div>
 
@@ -559,6 +787,12 @@ final class AI_Game_Instructor_Plugin
                                 <?php if (!empty($game['description'])) : ?>
                                     <div><?php echo esc_html($game['description']); ?></div>
                                 <?php endif; ?>
+                                <form method="post" style="display:inline-block; margin-top:0.5rem;">
+                                    <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
+                                    <input type="hidden" name="ai_game_instructor_action" value="delete_game" />
+                                    <input type="hidden" name="game_id" value="<?php echo esc_attr((int) $game['id']); ?>" />
+                                    <?php submit_button(__('Delete game', 'ai-game-instructor'), 'secondary small', 'submit', false); ?>
+                                </form>
                             </li>
                         <?php endforeach; ?>
                     </ul>
@@ -570,7 +804,32 @@ final class AI_Game_Instructor_Plugin
                 <?php else : ?>
                     <ul>
                         <?php foreach ($playthroughs as $playthrough) : ?>
-                            <li><?php echo esc_html($playthrough['name']); ?></li>
+                            <li>
+                                <?php echo esc_html($playthrough['name']); ?>
+                                <form method="post" style="display:inline-block; margin-left:0.5rem;">
+                                    <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
+                                    <input type="hidden" name="ai_game_instructor_action" value="delete_playthrough" />
+                                    <input type="hidden" name="playthrough_id" value="<?php echo esc_attr((int) $playthrough['id']); ?>" />
+                                    <?php submit_button(__('Delete playthrough', 'ai-game-instructor'), 'secondary small', 'submit', false); ?>
+                                </form>
+                                <form method="post" style="display:inline-block; margin-left:0.5rem;">
+                                    <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
+                                    <input type="hidden" name="ai_game_instructor_action" value="reset_playthrough" />
+                                    <input type="hidden" name="playthrough_id" value="<?php echo esc_attr((int) $playthrough['id']); ?>" />
+                                    <?php submit_button(__('Reset playthrough', 'ai-game-instructor'), 'secondary small', 'submit', false); ?>
+                                </form>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+
+                <h2><?php echo esc_html__('Imported knowledge', 'ai-game-instructor'); ?></h2>
+                <?php if (empty($documents)) : ?>
+                    <p><?php echo esc_html__('No documents imported yet.', 'ai-game-instructor'); ?></p>
+                <?php else : ?>
+                    <ul>
+                        <?php foreach ($documents as $document) : ?>
+                            <li><?php echo esc_html($document['title']); ?> (<?php echo esc_html($document['source_type'] ?: 'manual'); ?>)</li>
                         <?php endforeach; ?>
                     </ul>
                 <?php endif; ?>
@@ -1000,20 +1259,25 @@ final class AI_Game_Instructor_Plugin
         }
 
         $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
-        $memory_json = $_POST['memory'] ?? '';
+        $memory_json = $_POST['memory'] ?? '[]';
+        $objective_json = $_POST['objectives'] ?? '[]';
         $memory_items = array();
 
         if (!empty($memory_json)) {
             $memory_items = json_decode(stripslashes($memory_json), true);
         }
 
+        $objective_items = array();
+        if (!empty($objective_json)) {
+            $objective_items = json_decode(stripslashes($objective_json), true);
+        }
+
         if (!is_array($memory_items)) {
-            $memory_items = array(
-                array(
-                    'type' => 'event',
-                    'summary' => 'New game event recorded.',
-                ),
-            );
+            $memory_items = array();
+        }
+
+        if (!is_array($objective_items)) {
+            $objective_items = array();
         }
 
         if (!$playthrough_id) {
@@ -1021,7 +1285,7 @@ final class AI_Game_Instructor_Plugin
         }
 
         global $wpdb;
-        $saved = 0;
+        $saved_memory = 0;
         $table = $this->get_table_name('memory');
 
         foreach ($memory_items as $item) {
@@ -1043,9 +1307,14 @@ final class AI_Game_Instructor_Plugin
                 array('%d', '%s', '%s', '%s')
             );
 
-            $saved++;
+            $saved_memory++;
         }
 
-        wp_send_json_success(array('saved' => $saved));
+        $saved_objectives = $this->save_objectives_for_playthrough($playthrough_id, $objective_items);
+
+        wp_send_json_success(array(
+            'saved_memory' => $saved_memory,
+            'saved_objectives' => $saved_objectives,
+        ));
     }
 }
