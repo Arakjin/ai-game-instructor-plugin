@@ -6,7 +6,7 @@ A WordPress plugin that turns a game guide into a playable in-page assistant. It
 
 - WordPress admin page for managing games and playthroughs
 - Shortcode embed for a chat widget on any page or post
-- Knowledge import from pasted walkthrough or notes text
+- Knowledge import from uploaded text files or documents
 - Basic retrieval over imported game knowledge
 - AI chat flow using Groq or OpenAI-compatible APIs
 - Memory and objective saving for each playthrough
@@ -17,7 +17,7 @@ A WordPress plugin that turns a game guide into a playable in-page assistant. It
 2. Activate the plugin in WordPress admin.
 3. Go to the admin menu item "AI Game Instructor".
 4. Create a game, then create at least one playthrough.
-5. Paste any game knowledge text you want to use as context.
+5. Upload a game knowledge file such as `.txt`, `.md`, or `.docx`.
 6. Add the shortcode to a page or post.
 
 ## Shortcode
@@ -63,7 +63,7 @@ Use the plugin admin page to:
 
 - create a game
 - create playthroughs
-- import game knowledge
+- upload game knowledge files
 - save AI agent settings
 - delete or reset playthroughs and games
 

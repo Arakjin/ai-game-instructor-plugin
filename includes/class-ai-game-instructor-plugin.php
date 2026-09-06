@@ -153,6 +153,8 @@ final class AI_Game_Instructor_Plugin
         $defaults = array(
             'ai_provider' => 'groq',
             'ai_model' => 'openai/gpt-oss-120b',
+            'ai_api_key' => '',
+            'ai_api_url' => '',
             'agent_name' => 'AI Game Guide',
             'base_prompt' => 'You are an expert game guide helping a player with walkthroughs and strategy.',
             'personality_prompt' => 'Be helpful, concise, and factual.',
@@ -232,8 +234,15 @@ final class AI_Game_Instructor_Plugin
         if ('import_game_knowledge' === $action) {
             $game_id = absint($_POST['knowledge_game_id'] ?? 0);
             $title = trim(sanitize_text_field(wp_unslash($_POST['knowledge_title'] ?? 'Imported knowledge')));
-            $content = trim(wp_unslash($_POST['knowledge_text'] ?? ''));
             $source_type = sanitize_text_field(wp_unslash($_POST['knowledge_source_type'] ?? 'manual'));
+            $content = trim(wp_unslash($_POST['knowledge_text'] ?? ''));
+
+            if (!empty($_FILES['knowledge_file']['name'])) {
+                $uploaded_content = $this->read_uploaded_knowledge_file($_FILES['knowledge_file']);
+                if (!empty($uploaded_content)) {
+                    $content = $uploaded_content;
+                }
+            }
 
             if ($game_id && !empty($content)) {
                 $this->import_game_knowledge($game_id, $title, $content, $source_type);
@@ -266,6 +275,8 @@ final class AI_Game_Instructor_Plugin
                 'agent_name' => sanitize_text_field(wp_unslash($_POST['agent_name'] ?? 'AI Game Guide')),
                 'ai_provider' => sanitize_text_field(wp_unslash($_POST['ai_provider'] ?? 'groq')),
                 'ai_model' => sanitize_text_field(wp_unslash($_POST['ai_model'] ?? 'openai/gpt-oss-120b')),
+                'ai_api_key' => sanitize_text_field(wp_unslash($_POST['ai_api_key'] ?? '')),
+                'ai_api_url' => esc_url_raw(wp_unslash($_POST['ai_api_url'] ?? '')),
                 'base_prompt' => sanitize_textarea_field(wp_unslash($_POST['base_prompt'] ?? '')),
                 'personality_prompt' => sanitize_textarea_field(wp_unslash($_POST['personality_prompt'] ?? '')),
                 'spoiler_prompt' => sanitize_textarea_field(wp_unslash($_POST['spoiler_prompt'] ?? '')),
@@ -478,6 +489,73 @@ final class AI_Game_Instructor_Plugin
         return $chunks;
     }
 
+    public function read_uploaded_knowledge_file($file)
+    {
+        if (!is_array($file) || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            return '';
+        }
+
+        $path = $file['tmp_name'];
+        $name = basename((string) ($file['name'] ?? 'uploaded-file'));
+        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        if (in_array($extension, array('txt', 'md', 'csv', 'rtf'), true)) {
+            $content = @file_get_contents($path);
+            if (false === $content) {
+                return '';
+            }
+
+            return trim((string) preg_replace('/\x{FEFF}/u', '', $content));
+        }
+
+        if ('docx' === $extension) {
+            $zip = new ZipArchive();
+            if (true !== $zip->open($path)) {
+                return '';
+            }
+
+            $xml = $zip->getFromName('word/document.xml');
+            $zip->close();
+
+            if (false === $xml) {
+                return '';
+            }
+
+            $text = preg_replace('/<[^>]+>/', ' ', $xml);
+            $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            return trim((string) preg_replace('/\s+/', ' ', $text));
+        }
+
+        if ('odt' === $extension) {
+            $zip = new ZipArchive();
+            if (true !== $zip->open($path)) {
+                return '';
+            }
+
+            $xml = $zip->getFromName('content.xml');
+            $zip->close();
+
+            if (false === $xml) {
+                return '';
+            }
+
+            $text = preg_replace('/<[^>]+>/', ' ', $xml);
+            $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            return trim((string) preg_replace('/\s+/', ' ', $text));
+        }
+
+        $content = @file_get_contents($path);
+        if (false === $content) {
+            return '';
+        }
+
+        $decoded = mb_convert_encoding($content, 'UTF-8', 'UTF-8,ISO-8859-1');
+
+        return trim((string) preg_replace('/\x{FEFF}/u', '', $decoded));
+    }
+
     public function import_game_knowledge($game_id, $title, $content, $source_type = 'manual')
     {
         global $wpdb;
@@ -596,6 +674,8 @@ final class AI_Game_Instructor_Plugin
             'agent_name' => 'AI Game Guide',
             'ai_provider' => 'groq',
             'ai_model' => 'openai/gpt-oss-120b',
+            'ai_api_key' => '',
+            'ai_api_url' => '',
             'base_prompt' => 'You are an expert game guide helping a player with walkthroughs and strategy.',
             'personality_prompt' => 'Be helpful, concise, and factual.',
             'spoiler_prompt' => 'Avoid unnecessary spoilers unless the user asks directly.',
@@ -831,7 +911,7 @@ final class AI_Game_Instructor_Plugin
 
             <div class="card" style="padding:1rem; margin-top:1rem; margin-bottom:1rem; max-width:900px;">
                 <h2><?php echo esc_html__('Import game knowledge', 'ai-game-instructor'); ?></h2>
-                <form method="post">
+                <form method="post" enctype="multipart/form-data">
                     <?php wp_nonce_field('ai_game_instructor_admin_action'); ?>
                     <input type="hidden" name="ai_game_instructor_action" value="import_game_knowledge" />
                     <p>
@@ -856,8 +936,13 @@ final class AI_Game_Instructor_Plugin
                         </select>
                     </p>
                     <p>
-                        <label for="knowledge_text"><?php echo esc_html__('Knowledge text', 'ai-game-instructor'); ?></label><br />
-                        <textarea id="knowledge_text" name="knowledge_text" rows="12" class="large-text" placeholder="Paste a walkthrough, quest guide, or notes here..."></textarea>
+                        <label for="knowledge_file"><?php echo esc_html__('Knowledge file', 'ai-game-instructor'); ?></label><br />
+                        <input id="knowledge_file" type="file" name="knowledge_file" accept=".txt,.md,.csv,.rtf,.doc,.docx,.odt" />
+                        <small><?php echo esc_html__('Upload a text file, .docx, or other text-based document. Large uploads are better than pasting them into the field.', 'ai-game-instructor'); ?></small>
+                    </p>
+                    <p>
+                        <label for="knowledge_text"><?php echo esc_html__('Knowledge text (fallback)', 'ai-game-instructor'); ?></label><br />
+                        <textarea id="knowledge_text" name="knowledge_text" rows="8" class="large-text" placeholder="Optional fallback: paste a walkthrough, quest guide, or notes here..."></textarea>
                     </p>
                     <?php submit_button(__('Import knowledge', 'ai-game-instructor')); ?>
                 </form>
@@ -874,11 +959,19 @@ final class AI_Game_Instructor_Plugin
                     </p>
                     <p>
                         <label for="ai_provider"><?php echo esc_html__('AI provider', 'ai-game-instructor'); ?></label><br />
-                        <input id="ai_provider" type="text" name="ai_provider" class="regular-text" value="<?php echo esc_attr($settings['ai_provider']); ?>" />
+                        <input id="ai_provider" type="text" name="ai_provider" class="regular-text" value="<?php echo esc_attr($settings['ai_provider']); ?>" placeholder="groq or openai" />
                     </p>
                     <p>
                         <label for="ai_model"><?php echo esc_html__('AI model', 'ai-game-instructor'); ?></label><br />
-                        <input id="ai_model" type="text" name="ai_model" class="regular-text" value="<?php echo esc_attr($settings['ai_model']); ?>" />
+                        <input id="ai_model" type="text" name="ai_model" class="regular-text" value="<?php echo esc_attr($settings['ai_model']); ?>" placeholder="openai/gpt-oss-120b" />
+                    </p>
+                    <p>
+                        <label for="ai_api_url"><?php echo esc_html__('AI API URL', 'ai-game-instructor'); ?></label><br />
+                        <input id="ai_api_url" type="url" name="ai_api_url" class="regular-text" value="<?php echo esc_attr($settings['ai_api_url']); ?>" placeholder="https://api.groq.com/openai/v1/chat/completions" />
+                    </p>
+                    <p>
+                        <label for="ai_api_key"><?php echo esc_html__('AI API key', 'ai-game-instructor'); ?></label><br />
+                        <input id="ai_api_key" type="password" name="ai_api_key" class="regular-text" value="<?php echo esc_attr($settings['ai_api_key']); ?>" placeholder="Paste your API key here" />
                     </p>
                     <p>
                         <label for="base_prompt"><?php echo esc_html__('Base prompt', 'ai-game-instructor'); ?></label><br />
@@ -990,6 +1083,11 @@ final class AI_Game_Instructor_Plugin
 
     public function get_provider_api_key()
     {
+        $settings = $this->get_settings_map();
+        if (!empty($settings['ai_api_key'])) {
+            return (string) $settings['ai_api_key'];
+        }
+
         $candidates = array(
             'AI_GAME_INSTRUCTOR_API_KEY',
             'AI_GAME_INSTRUCTOR_GROQ_API_KEY',
@@ -1009,6 +1107,22 @@ final class AI_Game_Instructor_Plugin
         }
 
         return '';
+    }
+
+    public function get_provider_api_url($provider = '')
+    {
+        $provider = strtolower((string) ($provider ?: $this->get_setting_value('ai_provider', 'groq')));
+        $settings = $this->get_settings_map();
+
+        if (!empty($settings['ai_api_url'])) {
+            return (string) $settings['ai_api_url'];
+        }
+
+        if ('openai' === $provider) {
+            return 'https://api.openai.com/v1/chat/completions';
+        }
+
+        return 'https://api.groq.com/openai/v1/chat/completions';
     }
 
     public function get_setting_value($key, $default = '')
@@ -1266,12 +1380,7 @@ final class AI_Game_Instructor_Plugin
 
         $provider = strtolower($provider ?: 'groq');
         $model = $model ?: $this->get_setting_value('ai_model', 'openai/gpt-oss-120b');
-
-        if ('openai' === $provider) {
-            $endpoint = 'https://api.openai.com/v1/chat/completions';
-        } else {
-            $endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-        }
+        $endpoint = $this->get_provider_api_url($provider);
 
         $request_body = array(
             'model' => $model,
