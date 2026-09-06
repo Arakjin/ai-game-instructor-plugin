@@ -177,6 +177,44 @@ document.addEventListener('DOMContentLoaded', function () {
             const p = document.createElement('p');
             p.textContent = text;
             item.appendChild(p);
+            if (type === 'assistant') {
+                const actions = document.createElement('div');
+                actions.className = 'ai-game-instructor-message-actions';
+                const pushBtn = document.createElement('button');
+                pushBtn.type = 'button';
+                pushBtn.className = 'ai-game-instructor-push-response button button-small';
+                pushBtn.textContent = 'Push';
+                actions.appendChild(pushBtn);
+                item.appendChild(actions);
+
+                pushBtn.addEventListener('click', function () {
+                    const formData = new FormData();
+                    formData.append('action', 'ai_game_instructor_extract_summary');
+                    formData.append('nonce', aiGameInstructorData.nonce);
+                    formData.append('playthrough_id', container.dataset.playthroughId || '0');
+                    formData.append('text', text);
+
+                    fetch(aiGameInstructorData.ajaxUrl, {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'same-origin'
+                    })
+                        .then(function (response) { return response.json(); })
+                        .then(function (payload) {
+                            if (!payload.success) {
+                                addMessage(payload.data && payload.data.message ? payload.data.message : 'Failed to extract summary.', 'assistant');
+                                return;
+                            }
+
+                            container._lastProposedMemory = payload.data.proposed_memory || [];
+                            container._lastProposedObjectives = payload.data.proposed_objectives || [];
+                            showMemory(container._lastProposedMemory || []);
+                        })
+                        .catch(function () {
+                            addMessage('Unable to reach the AI service for summary extraction.', 'assistant');
+                        });
+                });
+            }
             messages.appendChild(item);
             messages.scrollTop = messages.scrollHeight;
         };

@@ -36,6 +36,8 @@ final class AI_Game_Instructor_Plugin
         add_action('wp_ajax_ai_game_instructor_save_memory', array($this, 'ajax_save_memory'));
         add_action('wp_ajax_nopriv_ai_game_instructor_save_memory', array($this, 'ajax_save_memory'));
         add_action('wp_ajax_ai_game_instructor_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_ai_game_instructor_extract_summary', array($this, 'ajax_extract_summary'));
+        add_action('wp_ajax_nopriv_ai_game_instructor_extract_summary', array($this, 'ajax_extract_summary'));
     }
 
     public static function activate()
@@ -1917,6 +1919,63 @@ final class AI_Game_Instructor_Plugin
         wp_send_json_success(array(
             'message' => 'AI connection is working.',
             'response' => $response['answer'] ?? 'OK',
+        ));
+    }
+
+    public function ajax_extract_summary()
+    {
+        if (!wp_verify_nonce($_REQUEST['nonce'] ?? '', 'ai_game_instructor_nonce')) {
+            wp_send_json_error(array('message' => 'Invalid nonce.'), 403);
+        }
+
+        $playthrough_id = absint($_POST['playthrough_id'] ?? 0);
+        $text = sanitize_textarea_field($_POST['text'] ?? '');
+
+        if (!$playthrough_id) {
+            wp_send_json_error(array('message' => 'No playthrough selected.'), 400);
+        }
+
+        if ('' === trim($text)) {
+            wp_send_json_error(array('message' => 'No text provided to summarize.'), 400);
+        }
+
+        $provider = $this->get_setting_value('ai_provider', 'groq');
+        $model = $this->get_setting_value('ai_model', $this->get_default_model_for_provider($provider));
+        $api_key = $this->get_provider_api_key();
+        $api_url = $this->get_provider_api_url($provider);
+
+        $extraction_prompt = "Extract up to 5 concise main points and up to 3 short objectives from the assistant response below.\n\nRespond with valid JSON only, with these keys: \n- proposed_memory: an array of objects with {\"type\": \"event\"|\"note\", \"summary\": \"one-line summary\"} \n- proposed_objectives: an array of objects with {\"text\": \"one-line objective\", \"status\": \"active\"|\"completed\"}\n\nAssistant response:\n\n" . $text;
+
+        $response = $this->call_ai_provider_with_config($extraction_prompt, $provider, $model, $api_key, $api_url);
+
+        if (!empty($response['error'])) {
+            wp_send_json_error(array('message' => $response['error']), 500);
+        }
+
+        $proposed_memory = array();
+        $proposed_objectives = array();
+
+        if (isset($response['proposed_memory']) && is_array($response['proposed_memory'])) {
+            $proposed_memory = $response['proposed_memory'];
+        } elseif (isset($response['memory']) && is_array($response['memory'])) {
+            $proposed_memory = $response['memory'];
+        }
+
+        if (isset($response['proposed_objectives']) && is_array($response['proposed_objectives'])) {
+            $proposed_objectives = $response['proposed_objectives'];
+        } elseif (isset($response['objectives']) && is_array($response['objectives'])) {
+            $proposed_objectives = $response['objectives'];
+        }
+
+        // Fallback: if no structured output, attempt to form a single summary item from the plain answer.
+        if (empty($proposed_memory) && isset($response['answer']) && is_string($response['answer'])) {
+            $summary = wp_trim_words($response['answer'], 50, '');
+            $proposed_memory[] = array('type' => 'event', 'summary' => $summary);
+        }
+
+        wp_send_json_success(array(
+            'proposed_memory' => $proposed_memory,
+            'proposed_objectives' => $proposed_objectives,
         ));
     }
 
