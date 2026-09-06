@@ -1,0 +1,131 @@
+.ai-game-instructor-plugin {
+    max-width: 900px;
+    margin: 2rem auto;
+    border: 1px solid #d0d5dd;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    font-family: Arial, sans-serif;
+}
+
+.ai-game-instructor-chat {
+    padding: 1rem;
+}
+
+.ai-game-instructor-header {
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+}
+
+.ai-game-instructor-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.ai-game-instructor-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-height: 220px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.ai-game-instructor-message {
+    max-width: 85%;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    line-height: 1.5;
+}
+
+.ai-game-instructor-message--assistant {
+    align-self: flex-start;
+    background: #e0f2fe;
+    color: #0f172a;
+}
+
+.ai-game-instructor-message--user {
+    align-self: flex-end;
+    background: #111827;
+    color: #f9fafb;
+}
+
+.ai-game-instructor-input-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.ai-game-instructor-input {
+    width: 100%;
+    min-height: 90px;
+    resize: vertical;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font: inherit;
+}
+
+.ai-game-instructor-send,
+.ai-game-instructor-save-memory,
+.ai-game-instructor-edit-memory,
+.ai-game-instructor-discard-memory {
+    appearance: none;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.ai-game-instructor-save-memory {
+    background: #16a34a;
+}
+
+.ai-game-instructor-edit-memory {
+    background: #f59e0b;
+}
+
+.ai-game-instructor-discard-memory {
+    background: #dc2626;
+}
+
+.ai-game-instructor-memory-panel {
+    margin-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 1rem;
+}
+
+.ai-game-instructor-memory-panel h4 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.ai-game-instructor-memory-list {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+}
+
+.ai-game-instructor-memory-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .ai-game-instructor-plugin {
+        margin: 1rem 0;
+    }
+
+    .ai-game-instructor-message {
+        max-width: 100%;
+    }
+}

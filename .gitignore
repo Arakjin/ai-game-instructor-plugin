@@ -1,0 +1,24 @@
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# WordPress
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/upgrade/
+
+# Logs
+*.log
+
+# Composer / build
+/vendor/
+node_modules/
+
+# Local backups
+*.bak
+*.tmp
