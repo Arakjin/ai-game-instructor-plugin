@@ -981,7 +981,7 @@ final class AI_Game_Instructor_Plugin
 
                     <p>
                         <label for="ai_model"><?php echo esc_html__('AI model', 'ai-game-instructor'); ?></label><br />
-                        <input id="ai_model" type="text" name="ai_model" class="regular-text" value="<?php echo esc_attr($settings['ai_model']); ?>" placeholder="openai/gpt-oss-120b" />
+                        <input id="ai_model" type="text" name="ai_model" class="regular-text" value="<?php echo esc_attr($settings['ai_model']); ?>" placeholder="<?php echo esc_attr($this->get_default_model_for_provider($settings['ai_provider'])); ?>" />
                     </p>
                     <p>
                         <label for="ai_api_url"><?php echo esc_html__('AI API URL', 'ai-game-instructor'); ?></label><br />
@@ -1028,6 +1028,23 @@ final class AI_Game_Instructor_Plugin
                             const matches = helpBlock.getAttribute('data-provider-help') === selected;
                             helpBlock.style.display = matches ? 'block' : 'none';
                         });
+
+                        const modelField = document.getElementById('ai_model');
+                        if (modelField && !modelField.dataset.userEdited) {
+                            const defaults = {
+                                groq: 'openai/gpt-oss-120b',
+                                openai: 'gpt-4o-mini',
+                                gemini: 'gemini-1.5-flash',
+                                azure_openai: 'gpt-4o-mini',
+                                custom: 'gpt-4o-mini'
+                            };
+
+                            const defaultModel = defaults[selected] || 'gpt-4o-mini';
+                            modelField.placeholder = defaultModel;
+                            if (!modelField.value || modelField.value === 'openai/gpt-oss-120b' || modelField.value === 'gpt-4o-mini' || modelField.value === 'gemini-1.5-flash') {
+                                modelField.value = defaultModel;
+                            }
+                        }
                     };
 
                     const statusEl = document.getElementById('ai-game-instructor-test-status');
@@ -1214,9 +1231,15 @@ final class AI_Game_Instructor_Plugin
         $candidates = array(
             'AI_GAME_INSTRUCTOR_API_KEY',
             'AI_GAME_INSTRUCTOR_GROQ_API_KEY',
+            'AI_GAME_INSTRUCTOR_OPENAI_API_KEY',
+            'AI_GAME_INSTRUCTOR_GEMINI_API_KEY',
+            'AI_GAME_INSTRUCTOR_AZURE_OPENAI_API_KEY',
             'GROQ_API_KEY',
             'OPENAI_API_KEY',
             'GEMINI_API_KEY',
+            'GOOGLE_API_KEY',
+            'AZURE_OPENAI_API_KEY',
+            'AZURE_OPENAI_KEY',
         );
 
         foreach ($candidates as $candidate) {
@@ -1231,6 +1254,29 @@ final class AI_Game_Instructor_Plugin
         }
 
         return '';
+    }
+
+    public function get_default_model_for_provider($provider = '')
+    {
+        $provider = strtolower((string) ($provider ?: $this->get_setting_value('ai_provider', 'groq')));
+
+        if ('groq' === $provider) {
+            return 'openai/gpt-oss-120b';
+        }
+
+        if ('openai' === $provider) {
+            return 'gpt-4o-mini';
+        }
+
+        if ('gemini' === $provider) {
+            return 'gemini-1.5-flash';
+        }
+
+        if ('azure_openai' === $provider) {
+            return 'gpt-4o-mini';
+        }
+
+        return 'gpt-4o-mini';
     }
 
     public function get_provider_api_url($provider = '')
